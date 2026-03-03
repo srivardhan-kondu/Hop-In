@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function hasRole(role) {
+      return isAuth() && request.auth.token.role == role;
+    }
+
+    function isSelf(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    function isDriverOfVan(vanId) {
+      return isAuth() && get(/databases/$(database)/documents/vans/$(vanId)).data.driverId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow create: if isSelf(userId)
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.role in ['parent', 'driver'];
+
+      allow read: if isSelf(userId) || hasRole('admin');
+
+      allow update: if isSelf(userId)
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                      'role',
+                      'aadhaarVerified',
+                      'verificationStatus',
+                      'performanceScore',
+                      'overallRating',
+                      'totalReviews'
+                    ]);
+
+      allow update: if hasRole('admin')
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                      'verificationStatus',
+                      'aadhaarVerified'
+                    ]);
+    }
+
+    match /schools/{schoolId} {
+      allow read: if isAuth();
+      allow write: if hasRole('admin');
+    }
+
+    match /vans/{vanId} {
+      allow read: if isAuth();
+      allow create, update: if hasRole('admin') || isDriverOfVan(vanId);
+      allow delete: if hasRole('admin');
+    }
+
+    match /bookings/{bookingId} {
+      allow create: if hasRole('parent')
+                    && request.resource.data.parentId == request.auth.uid
+                    && request.resource.data.contractMonths >= 3
+                    && request.resource.data.contractMonths <= 48;
+      allow read: if isAuth();
+      allow update: if hasRole('admin');
+    }
+
+    match /reviews/{reviewId} {
+      allow create: if hasRole('parent')
+                    && request.resource.data.parentId == request.auth.uid
+                    && request.resource.data.rating >= 1
+                    && request.resource.data.rating <= 5;
+      allow read: if isAuth();
+      allow update, delete: if hasRole('admin');
+    }
+
+    match /attendance/{attendanceId} {
+      allow create, update: if hasRole('admin') || (hasRole('driver') && isDriverOfVan(request.resource.data.vanId));
+      allow read: if isAuth();
+    }
+
+    match /driverLocations/{driverId} {
+      allow read: if isAuth();
+      allow write: if isSelf(driverId);
+    }
+
+    match /emergencyAlerts/{alertId} {
+      allow create: if (hasRole('parent') || hasRole('driver'))
+                    && request.resource.data.reportedBy == request.auth.uid
+                    && request.resource.data.role == request.auth.token.role;
+      allow read: if isAuth();
+      allow update: if hasRole('admin');
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuth() && resource.data.userId == request.auth.uid;
+      allow write: if hasRole('admin');
+    }
+
+    match /fcmTokens/{userId} {
+      allow read, write: if isSelf(userId);
+    }
+
+    match /geoFenceState/{stateId} {
+      allow read, write: if hasRole('admin');
+    }
+  }
+}

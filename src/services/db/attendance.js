@@ -28,12 +28,15 @@ export async function markBoarding({ childId, vanId, boardingLocation }) {
       collection(db, 'attendance'),
       where('childId', '==', childId),
       where('vanId', '==', vanId),
-      where('date', '>=', from),
-      where('date', '<=', to),
     ),
   );
 
-  if (!todaySnap.empty) {
+  const alreadyMarked = todaySnap.docs.some((item) => {
+    const docDate = toDate(item.data().date);
+    return docDate && docDate >= from && docDate <= to;
+  });
+
+  if (alreadyMarked) {
     throw new Error('Child already marked for today');
   }
 
@@ -66,8 +69,6 @@ export async function markSchoolArrivalForVan(vanId) {
     query(
       collection(db, 'attendance'),
       where('vanId', '==', vanId),
-      where('date', '>=', from),
-      where('date', '<=', to),
     ),
   );
 
@@ -75,7 +76,10 @@ export async function markSchoolArrivalForVan(vanId) {
   let updates = 0;
 
   snap.docs.forEach((item) => {
-    if (item.data().schoolArrivalTime) return;
+    const data = item.data();
+    const docDate = toDate(data.date);
+    if (!docDate || docDate < from || docDate > to) return;
+    if (data.schoolArrivalTime) return;
     batch.update(item.ref, { schoolArrivalTime: serverTimestamp() });
     updates += 1;
   });
@@ -95,13 +99,20 @@ export async function listTodayAttendanceByVan(vanId) {
     query(
       collection(db, 'attendance'),
       where('vanId', '==', vanId),
-      where('date', '>=', from),
-      where('date', '<=', to),
-      orderBy('date', 'desc'),
     ),
   );
 
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((row) => {
+      const docDate = toDate(row.date);
+      return docDate && docDate >= from && docDate <= to;
+    })
+    .sort((a, b) => {
+      const da = toDate(a.date);
+      const db2 = toDate(b.date);
+      return (db2?.getTime() ?? 0) - (da?.getTime() ?? 0);
+    });
 }
 
 export async function listAttendanceByChild(childId, filters = {}) {

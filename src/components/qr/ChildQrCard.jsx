@@ -20,7 +20,7 @@ function ChildQrCard({ child, vanId, parentId }) {
         </div>
       </div>
       <div className="qr-frame">
-        <QRCode value={qrPayload} size={160} level="H" />
+        <QRCode value={qrPayload} size={256} level="H" />
       </div>
     </article>
   );

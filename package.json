@@ -16,6 +16,7 @@
     "dayjs": "^1.11.13",
     "firebase": "^11.5.0",
     "html5-qrcode": "^2.3.8",
+    "jsqr": "^1.4.0",
     "leaflet": "^1.9.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

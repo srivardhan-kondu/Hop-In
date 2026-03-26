@@ -3,7 +3,6 @@ import {
   collection,
   doc,
   getDocs,
-  orderBy,
   query,
   serverTimestamp,
   updateDoc,
@@ -20,26 +19,6 @@ function toDate(value) {
 }
 
 export async function markBoarding({ childId, vanId, boardingLocation }) {
-  const from = startOfDay(new Date());
-  const to = endOfDay(new Date());
-
-  const todaySnap = await getDocs(
-    query(
-      collection(db, 'attendance'),
-      where('childId', '==', childId),
-      where('vanId', '==', vanId),
-    ),
-  );
-
-  const alreadyMarked = todaySnap.docs.some((item) => {
-    const docDate = toDate(item.data().date);
-    return docDate && docDate >= from && docDate <= to;
-  });
-
-  if (alreadyMarked) {
-    throw new Error('Child already marked for today');
-  }
-
   const ref = await addDoc(collection(db, 'attendance'), {
     attendanceId: crypto.randomUUID(),
     childId,
@@ -116,13 +95,38 @@ export async function listTodayAttendanceByVan(vanId) {
 }
 
 export async function listAttendanceByChild(childId, filters = {}) {
-  const constraints = [where('childId', '==', childId), orderBy('date', 'desc')];
+  // Fetch all attendance for this child — filtering and sorting done client-side
+  // to avoid Firestore composite index requirements
+  const snap = await getDocs(
+    query(collection(db, 'attendance'), where('childId', '==', childId)),
+  );
 
-  if (filters.from) constraints.push(where('date', '>=', startOfDay(new Date(filters.from))));
-  if (filters.to) constraints.push(where('date', '<=', endOfDay(new Date(filters.to))));
+  let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-  const snap = await getDocs(query(collection(db, 'attendance'), ...constraints));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  // Apply date range filters client-side
+  if (filters.from) {
+    const from = startOfDay(new Date(filters.from));
+    rows = rows.filter((row) => {
+      const d = toDate(row.date);
+      return d && d >= from;
+    });
+  }
+  if (filters.to) {
+    const to = endOfDay(new Date(filters.to));
+    rows = rows.filter((row) => {
+      const d = toDate(row.date);
+      return d && d <= to;
+    });
+  }
+
+  // Sort by date descending
+  rows.sort((a, b) => {
+    const da = toDate(a.date);
+    const db2 = toDate(b.date);
+    return (db2?.getTime() ?? 0) - (da?.getTime() ?? 0);
+  });
+
+  return rows;
 }
 
 export function attendanceToCsv(rows) {

@@ -4,7 +4,6 @@ import {
   doc,
   getDocs,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   updateDoc,
@@ -22,16 +21,38 @@ export async function createEmergencyAlert(payload) {
   });
 }
 
+function toDate(value) {
+  if (!value) return null;
+  if (typeof value?.toDate === 'function') return value.toDate();
+  return value instanceof Date ? value : new Date(value);
+}
+
 export async function listOpenAlerts() {
-  const snap = await getDocs(query(collection(db, 'emergencyAlerts'), where('status', '==', 'open'), orderBy('timestamp', 'desc')));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  // Query by status only — sort client-side to avoid composite index requirement
+  const snap = await getDocs(
+    query(collection(db, 'emergencyAlerts'), where('status', '==', 'open')),
+  );
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => {
+      const da = toDate(a.timestamp);
+      const db2 = toDate(b.timestamp);
+      return (db2?.getTime() ?? 0) - (da?.getTime() ?? 0);
+    });
 }
 
 export function subscribeOpenAlerts(callback) {
   return onSnapshot(
-    query(collection(db, 'emergencyAlerts'), where('status', '==', 'open'), orderBy('timestamp', 'desc')),
+    query(collection(db, 'emergencyAlerts'), where('status', '==', 'open')),
     (snap) => {
-      callback(snap.docs.map((item) => ({ id: item.id, ...item.data() })));
+      const rows = snap.docs
+        .map((item) => ({ id: item.id, ...item.data() }))
+        .sort((a, b) => {
+          const da = toDate(a.timestamp);
+          const db2 = toDate(b.timestamp);
+          return (db2?.getTime() ?? 0) - (da?.getTime() ?? 0);
+        });
+      callback(rows);
     },
   );
 }

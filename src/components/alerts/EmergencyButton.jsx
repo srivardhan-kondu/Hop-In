@@ -23,6 +23,8 @@ function EmergencyButton({ reportedBy, role, vanId, location }) {
       setStatus('Emergency alert sent to admins.');
       setDescription('');
       setOpen(false);
+    } catch (err) {
+      setStatus(`Failed to send alert: ${err?.message ?? 'Unknown error'}`);
     } finally {
       setSending(false);
     }
